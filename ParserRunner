@@ -1,0 +1,76 @@
+import ExcelParser, json, re, utils
+from ExcelQueryEngine import ExcelQueryEngine
+from glob import glob
+import os
+
+def getSheetNames(sheets):
+    INSPECTION_RESULT_SHEET = ""
+    EVALUATION_RESULT_SHEET = ""
+    for sheet in sheets:
+        if "(Report)" in sheet:
+            INSPECTION_RESULT_SHEET = sheet
+        if "(MC,PO)" in sheet:
+            EVALUATION_RESULT_SHEET = sheet
+
+    return (INSPECTION_RESULT_SHEET, EVALUATION_RESULT_SHEET)
+
+def get_parsed_data(filename = "ecap.xlsx"):
+
+    excel_data = ExcelParser.parse_excel_all_sheets(filename)
+
+    eqe = ExcelQueryEngine(excel_data)
+    (INSPECTION_RESULT_SHEET,    EVALUATION_RESULT_SHEET) = getSheetNames(excel_data.keys())
+
+    ecapId = eqe.get_adjacent_value(INSPECTION_RESULT_SHEET, "e-CAP", (0,1))
+    quantity = eqe.get_adjacent_value(INSPECTION_RESULT_SHEET, "수량", (1,0))
+    equipmentShipment = eqe.get_adjacent_value(INSPECTION_RESULT_SHEET, "설비출하", (0,1))
+    installationSite = eqe.get_adjacent_value(INSPECTION_RESULT_SHEET, "설치장소", (1,0))
+    incharge = eqe.get_adjacent_value(INSPECTION_RESULT_SHEET, "담당자", (0,1))
+
+
+
+    matches = eqe.find_by_value(INSPECTION_RESULT_SHEET, "참여자")
+    startMatch = matches[1]
+    endMatch = matches[-1]
+
+    startMatch = eqe.add_offset(startMatch, (0, 1))
+
+    endMatch = eqe.add_offset(endMatch, (0, 2))
+    endMatch = eqe.add_offset(endMatch, (0,8))
+
+    participants = eqe.get_range(INSPECTION_RESULT_SHEET, startMatch, endMatch)
+
+    participants = [item for sublist in participants for item in sublist if item is not None]
+
+    mcporows = eqe.get_columns_from_row(EVALUATION_RESULT_SHEET, ['B', 'N', 'O', 'Q', 'R', 'S'], 4)
+    mcpo = []
+    for row in mcporows:
+        if row[0] is not None:
+            mcpo.append(row)
+
+    content = eqe.get_columns_from_row_to_row(INSPECTION_RESULT_SHEET, ['C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'], 14,19)
+
+
+
+    content = utils.unique_ordered(content)
+    content = list(filter(lambda word: word is not None, content))
+    content = utils.format(content)
+
+    return {
+        "ecapId": ecapId,
+        "quantity": quantity,
+        "equipmentShipment": equipmentShipment,
+        "installationSite": installationSite,
+        "incharge": incharge,
+        "participants": participants,
+        "mcpo": mcpo,
+        "content": content
+    }
+
+
+if __name__ == "__main__":
+    files = glob("./sample_xls/*.xlsx")
+    for file in files:
+        data = get_parsed_data(f"{file}")
+        with open(f"jsons/{os.path.basename(file)}.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
